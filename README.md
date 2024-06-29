@@ -1,3 +1,3 @@
 # ESP32-Watchman
 ## Work in progress...
-Monitors for nearby Bluetooth devices and optionally alerts on lighting or motion changes
+PoE-powered device that monitors for nearby Bluetooth devices and optionally alerts on lighting or motion changes
