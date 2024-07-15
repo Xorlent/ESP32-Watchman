@@ -1,10 +1,7 @@
 # ESP32-Watchman
 ## Work in progress...
-PoE-powered device that monitors for nearby Bluetooth devices and optionally alerts on lighting or motion changes
+PoE-powered remote facility monitor that scans for and alerts on nearby Bluetooth devices, optionally alerting on motion
 
-
-
-# Remote Facility Monitor with Bluetooth plus motion or light sensing
 ## Background
 For remote facilities that have limited bandwidth available for video streaming, this device can notify 
 
