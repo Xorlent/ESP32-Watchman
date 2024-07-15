@@ -2,9 +2,6 @@
 ## Work in progress...
 PoE-powered remote facility monitor that scans for and alerts on nearby Bluetooth devices, optionally alerting on motion
 
-## Background
-For remote facilities that have limited bandwidth available for video streaming, this device can notify 
-
 ## Requirements
 1. M5Stack [AtomPoE Base W5500](https://shop.m5stack.com/products/atomic-poe-base-w5500), currently $18.50 USD
 2. M5Stack [Atom S3 Lite](https://shop.m5stack.com/products/atoms3-lite-esp32s3-dev-kit), currently $7.50 USD
