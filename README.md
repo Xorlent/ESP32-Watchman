@@ -1,6 +1,8 @@
 # ESP32-Watchman
 ## Work in progress...
 PoE-powered remote facility monitor that scans for and alerts on nearby Bluetooth devices, optionally alerting on motion
+> [!WARNING]
+> [Recent news about an in-chip backdoor likely exists that affects all ESP32 devices](https://www.tarlogic.com/news/backdoor-esp32-chip-infect-ot-devices)
 
 ## Requirements
 1. M5Stack [AtomPoE Base W5500](https://shop.m5stack.com/products/atomic-poe-base-w5500), currently $18.50 USD
