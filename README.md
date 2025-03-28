@@ -1,13 +1,13 @@
 # ESP32-Watchman
-## Work in progress...
-PoE-powered remote facility monitor that scans for and alerts on nearby Bluetooth devices, optionally alerting on motion
+## PoE-powered remote facility monitor that scans for and alerts on nearby Bluetooth devices
+### To-do: Optionally alert on motion
 > [!NOTE]
 > There have been recent news articles about ESP32 hidden features, but [researchers disagree about whether they constitute a backdoor](https://darkmentor.com/blog/esp32_non-backdoor) or are simply not publicly documented.
 
 ## Requirements
 1. M5Stack [AtomPoE Base W5500](https://shop.m5stack.com/products/atomic-poe-base-w5500), currently $18.50 USD
 2. M5Stack [Atom S3 Lite](https://shop.m5stack.com/products/atoms3-lite-esp32s3-dev-kit), currently $7.50 USD
-3. Either:
+3. Optional (not yet implemented in code) Either:
    - A [Ultrasonic Distance I2C](https://shop.m5stack.com/products/ultrasonic-distance-unit-i2c-rcwl-9620), currently $5.95 USD
    - A [DLight Unit](https://shop.m5stack.com/products/dlight-unit-ambient-light-sensor-bh1750fvi-tr), currently $5.50
 
