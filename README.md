@@ -1,6 +1,6 @@
 # ESP32-Watchman
 ## PoE-powered remote facility monitor that scans for and alerts on nearby Bluetooth devices
-### To-do: Optionally alert on motion
+### *To-do: Optionally alert on motion*
 > [!NOTE]
 > There have been recent news articles about ESP32 hidden features, but [researchers disagree about whether they constitute a backdoor](https://darkmentor.com/blog/esp32_non-backdoor) or are simply not publicly documented.
 
