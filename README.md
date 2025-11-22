@@ -3,8 +3,6 @@
 ### *To-do: Optionally alert on motion / light*
 ## Background
 Remote, unmanned facilites can provide ample opportunity for tampering, physical theft, and network penetration attacks.  The M5Stack AtomPoE together with the ESP32 S3 SoC can be used as a perimeter sensing device, sending all nearby Bluetooth device information to a configured Syslog server.  These Syslog messages can help provide visibility into activity that may indicate traditional physical security measures have been circumvented.
-> [!NOTE]
-> There have been recent news articles about ESP32 hidden features, but [researchers disagree about whether they constitute a backdoor](https://darkmentor.com/blog/esp32_non-backdoor) or are simply not publicly documented.
 
 ## Requirements
 1. M5Stack [AtomPoE Base W5500](https://shop.m5stack.com/products/atomic-poe-base-w5500), currently $18.50 USD
