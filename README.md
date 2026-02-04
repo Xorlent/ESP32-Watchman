@@ -50,7 +50,6 @@ _Once you've successfully programmed a single unit, skip step 1.  Repeating this
 6. Unplug the Atom S3 Lite from your computer
 7. Plug in the desired sensor module [pic](https://github.com/Xorlent/ESP32-Watchman/blob/main/images/5-Assembled.jpg)
 8. Connect the assembly to a PoE network port and mount as appropriate
-   - See the /3Dmodels folder for print-able mounting plates or [Guidance and Limitations](https://github.com/Xorlent/ESP32-Watchman/blob/main/README.md#guidance-and-limitations) for more detail
 9. Configure your Syslog alerting as appropriate
 
 ## Guidance and Limitations
