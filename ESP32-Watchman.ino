@@ -257,12 +257,12 @@ bool detectUltrasonicModule() {
   
   float testValue = ultrasonic.getDistance();
   
-  // If we get a reasonable value (10-4500 mm)
+  // If we get a reasonable value (10-4499 mm)
   // Consider the module present
   Serial.printf("Ultrasonic test reading: %.2f mm\n", testValue);
   
   // Check if the value is within valid range
-  if (testValue >= 10.0 && testValue <= 4500.0) {
+  if (testValue >= 10.0 && testValue <= 4499.0) {
     return true; // Sensor responded with valid data
   }
   return false;
@@ -1022,3 +1022,4 @@ void loop() {
   // Motion detection monitoring routine
   checkMotionLevel();
 }
+
