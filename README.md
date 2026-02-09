@@ -43,7 +43,7 @@ _Once you've successfully programmed a single unit, skip step 1.  Repeating this
    - Edit the configuration parameters at the very top of the file.
    - Select Tools->Board->esp32 and select "M5AtomS3"
    - Select Tools->Partition Scheme and select "NO OTA (2MB APP/2MB SPIFFS)"
-3. From your computer, plug a USB C cable into the Atom S3 Lite [pic](https://github.com/Xorlent/ESP32-Watchman/blob/main/images/4-Programmer.jpg)
+3. From your computer, plug a USB C cable into the Atom S3 Lite
 > [!WARNING]
 > Do not plug the device into Ethernet until after step 7 or you risk damaging your USB port!
 4. Push the button on the side of the Atom S3 Lite for 3 seconds.  You will see a blue LED briefly light up.
@@ -62,7 +62,7 @@ _Once you've successfully programmed a single unit, skip step 1.  Repeating this
      Hard resetting via RTS pin...
 6. Switch to the Serial Monitor (Tools->Serial Monitor) and configure the device
 7. Unplug the Atom S3 Lite from your computer
-8. (Optional) Plug in the desired sensor module [pic](https://github.com/Xorlent/ESP32-Watchman/blob/main/images/5-Assembled.jpg)
+8. (Optional) Connect the desired sensor module
 9. Connect the assembly to a PoE network port and mount as appropriate
 10. Configure your Syslog alerting as appropriate
 
@@ -83,4 +83,5 @@ _Once you've successfully programmed a single unit, skip step 1.  Repeating this
 - Ethernet
   - W5500 PHY
   - 10/100 Mbit twisted pair copper
+
   - IEEE 802.3af Power-over-Ethernet
