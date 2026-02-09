@@ -1,35 +1,48 @@
 # ESP32-Watchman
-## PoE-powered remote facility monitor that scans for and alerts on nearby Bluetooth devices
-### *To-do: Optionally alert on motion / light*
+## PoE-powered remote facility monitor that scans for and alerts on nearby Bluetooth devices and light level changes, or detected motion
 ## Background
-Remote, unmanned facilites can provide ample opportunity for tampering, physical theft, and network penetration attacks.  The M5Stack AtomPoE together with the ESP32 S3 SoC can be used as a perimeter sensing device, sending all nearby Bluetooth device information to a configured Syslog server.  These Syslog messages can help provide visibility into activity that may indicate traditional physical security measures have been circumvented.
+Remote, unmanned facilites can provide ample opportunity for tampering, physical theft, and network penetration attacks.  The M5Stack AtomPoE together with the ESP32 S3 SoC can be used as a perimeter sensing device, sending detection information to a configured Syslog server.  These Syslog messages can help provide visibility into activity that may indicate traditional physical security measures have been circumvented.
 
 ## Requirements
-1. M5Stack [AtomPoE Base W5500](https://shop.m5stack.com/products/atomic-poe-base-w5500), currently $18.50 USD
-2. M5Stack [Atom S3 Lite](https://shop.m5stack.com/products/atoms3-lite-esp32s3-dev-kit), currently $7.50 USD
-3. Optional (not yet implemented in code) Either:
-   - A [Ultrasonic Distance I2C](https://shop.m5stack.com/products/ultrasonic-distance-unit-i2c-rcwl-9620), currently $5.95 USD
-   - A [DLight Unit](https://shop.m5stack.com/products/dlight-unit-ambient-light-sensor-bh1750fvi-tr), currently $5.50
-
-## Cost Analysis
-Total cost per assembly: Under $32 plus tax and shipping  
-Programming time per unit: < 10 minutes  
+1. M5Stack [AtomPoE Base W5500](https://shop.m5stack.com/products/atomic-poe-base-w5500)
+2. M5Stack [Atom S3 Lite](https://shop.m5stack.com/products/atoms3-lite-esp32s3-dev-kit)
+3. Optionally, either:
+   - A [Ultrasonic Distance I2C](https://shop.m5stack.com/products/ultrasonic-distance-unit-i2c-rcwl-9620)
+   - A [DLight Unit](https://shop.m5stack.com/products/dlight-unit-ambient-light-sensor-bh1750fvi-tr)
 
 ## Device Capability Comparison
-This project generates Syslog notifications for all detected activity.  A re-flash/re-programming is required to modify any configuration options:
+This project generates Syslog notifications for all detected activity.
+
+## Configuration
+All configuration is managed through a serial terminal interface. On first boot, the device automatically enters configuration mode. After initial setup, you can re-enter configuration mode at any time by pressing **'C'** within 5 seconds of device startup.
+
+Configurable options:
 - Host name
 - Device IP and subnet
 - IP gateway
+- DNS server
 - Syslog server
 - NTP server
-- Bluetooth detection thresholds
+- Bluetooth RSSI threshold
+- Dwell time (60-86400 seconds) - time to wait between detections of the same device
+
+Configuration changes are saved to non-volatile memory and persist across reboots.
+
+## LED Status Indicators
+The device uses an RGB LED to indicate its current status:
+- **Red** - Missing Ethernet PHY (Is the AtomPoE sled connected?)
+- **Yellow** - Waiting for Ethernet link to come up
+- **Green** - Connected
+- **Purple** - NTP sync failure
+- **Blue** - Active Bluetooth poll
 
 ## Programming
 _Once you've successfully programmed a single unit, skip step 1.  Repeating this process takes 5 minutes from start to finish._
 1. [Set up your Arduino programming environment](https://github.com/Xorlent/ESP32-Watchman/blob/main/ARDUINO-SETUP.md)
 2. In Arduino, open the project file (PoESP32-Watchman.ino)
    - Edit the configuration parameters at the very top of the file.
-   - Select Tools->Board->esp32 and select "ESP32 S3 PowerFeather"
+   - Select Tools->Board->esp32 and select "M5AtomS3"
+   - Select Tools->Partition Scheme and select "NO OTA (2MB APP/2MB SPIFFS)"
 3. From your computer, plug a USB C cable into the Atom S3 Lite [pic](https://github.com/Xorlent/ESP32-Watchman/blob/main/images/4-Programmer.jpg)
 > [!WARNING]
 > Do not plug the device into Ethernet until after step 7 or you risk damaging your USB port!
@@ -47,10 +60,11 @@ _Once you've successfully programmed a single unit, skip step 1.  Repeating this
 
      Leaving...
      Hard resetting via RTS pin...
-6. Unplug the Atom S3 Lite from your computer
-7. Plug in the desired sensor module [pic](https://github.com/Xorlent/ESP32-Watchman/blob/main/images/5-Assembled.jpg)
-8. Connect the assembly to a PoE network port and mount as appropriate
-9. Configure your Syslog alerting as appropriate
+6. Switch to the Serial Monitor (Tools->Serial Monitor) and configure the device
+7. Unplug the Atom S3 Lite from your computer
+8. (Optional) Plug in the desired sensor module [pic](https://github.com/Xorlent/ESP32-Watchman/blob/main/images/5-Assembled.jpg)
+9. Connect the assembly to a PoE network port and mount as appropriate
+10. Configure your Syslog alerting as appropriate
 
 ## Guidance and Limitations
 - The device will respond to pings from any IP address within the routable network.
@@ -61,7 +75,7 @@ _Once you've successfully programmed a single unit, skip step 1.  Repeating this
   - Operating temperature: 0°F (-17.7°C) to 140°F (60°C)
   - Operating humidity: 5% to 90% (RH), non-condensing
 - Motion Sensor Range
-  - Up to 3.5 meters
+  - Up to 4.5 meters
 - Light Sensor Range
   - 1 lux minimum
 - Power Consumption
