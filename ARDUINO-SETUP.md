@@ -10,7 +10,5 @@
 6. Open the Libraries Manager
    - Type "NTP" in the search field and select "NTP by Stefan Staub"
      - Install version 1.7.0
-   - Type "Sqlite3Esp32" in the search field and select "Sqlite3Esp32 by Arundale Ramanathan"
-     - Install version 2.5
    - Type "FastLED" in the search field and select "FastLED by Daniel Garcia"
      - Install version 3.10.3
