@@ -8,6 +8,8 @@
    - Type "esp32" in the search field and select "esp32 by Espressif Systems" (__NOT "Arduino ESP32 Boards"__)
      - Install version 3.3.6
 6. Open the Libraries Manager
+   - Type "ESP32IMDB" in the search field and select "ESP32IMDB by Xorlent"
+     - Install version 1.1.0
    - Type "NTP" in the search field and select "NTP by Stefan Staub"
      - Install version 1.7.0
    - Type "FastLED" in the search field and select "FastLED by Daniel Garcia"
