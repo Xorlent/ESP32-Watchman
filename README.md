@@ -42,7 +42,6 @@ _Once you've successfully programmed a single unit, skip step 1.  Repeating this
 2. In Arduino, open the project file (PoESP32-Watchman.ino)
    - Edit the configuration parameters at the very top of the file.
    - Select Tools->Board->esp32 and select "M5AtomS3"
-   - Select Tools->Partition Scheme and select "NO OTA (2MB APP/2MB SPIFFS)"
 3. From your computer, plug a USB C cable into the Atom S3 Lite
 > [!WARNING]
 > Do not plug the device into Ethernet until after step 7 or you risk damaging your USB port!
@@ -85,3 +84,4 @@ _Once you've successfully programmed a single unit, skip step 1.  Repeating this
   - 10/100 Mbit twisted pair copper
 
   - IEEE 802.3af Power-over-Ethernet
+
