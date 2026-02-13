@@ -55,10 +55,8 @@ IPAddress configSyslog;
 
 #include <Ethernet.h>
 #include "BLEDevice.h"
-#include <sqlite3.h>
+#include "ESP32IMDB.h"
 #include <SPI.h>
-#include <FS.h>
-#include "SPIFFS.h"
 #include "NTP.h"
 #include <EthernetUDP.h>
 #include <Preferences.h>
@@ -99,9 +97,9 @@ bool ethernetInitialized = false;
 #define ETH_SPI_MOSI    8
 // End SPI Etherenet config setup
 
-// SQLite DB setup
-sqlite3 *BTDB;
-// End SQLite DB setup
+// ESP32IMDB In-Memory Database setup
+ESP32IMDB db;
+// End ESP32IMDB setup
 
 // Bluetooth setup
 BLEScan *pBLEScan;
@@ -326,97 +324,93 @@ void checkMotionLevel() {
 
 // Database helper functions
 bool updateDeviceTimesSeen(const char* macAddress) {
-  sqlite3_stmt *stmt = nullptr;
-  char query[256];
-  snprintf(query, sizeof(query), "UPDATE BTClients SET TimesSeen = TimesSeen + 1 WHERE Address = ?");
-  
-  int retval = sqlite3_prepare_v2(BTDB, query, -1, &stmt, nullptr);
-  if (retval != SQLITE_OK) {
-    Serial.printf("Failed to prepare update TimesSeen: %s\n", sqlite3_errmsg(BTDB));
-    if (stmt) sqlite3_finalize(stmt);
+  // Parse MAC address string to bytes
+  uint8_t macBytes[6];
+  if (!ESP32IMDB::parseMacAddress(macAddress, macBytes)) {
+    Serial.printf("Failed to parse MAC address: %s\n", macAddress);
     return false;
   }
   
-  sqlite3_bind_text(stmt, 1, macAddress, -1, SQLITE_TRANSIENT);
+  // UPDATE BTClients SET TimesSeen = TimesSeen + 1 WHERE Address = macAddress
+  IMDBResult result = db.updateWithMath("Address", &macBytes, "TimesSeen", IMDB_MATH_ADD, 1);
   
-  bool success = (sqlite3_step(stmt) == SQLITE_DONE);
-  if (success) {
+  if (result == IMDB_OK) {
     Serial.println("Updated times seen.");
+    return true;
+  } else {
+    Serial.printf("Failed to update TimesSeen: %s\n", ESP32IMDB::resultToString(result));
+    return false;
   }
-  
-  sqlite3_finalize(stmt);
-  return success;
 }
 
 bool updateDeviceLastSeen(const char* macAddress, unsigned long timestamp) {
-  sqlite3_stmt *stmt = nullptr;
-  char query[256];
-  snprintf(query, sizeof(query), "UPDATE BTClients SET LastSeen = ? WHERE Address = ?");
-  
-  int retval = sqlite3_prepare_v2(BTDB, query, -1, &stmt, nullptr);
-  if (retval != SQLITE_OK) {
-    Serial.printf("Failed to prepare update LastSeen: %s\n", sqlite3_errmsg(BTDB));
-    if (stmt) sqlite3_finalize(stmt);
+  // Parse MAC address string to bytes
+  uint8_t macBytes[6];
+  if (!ESP32IMDB::parseMacAddress(macAddress, macBytes)) {
+    Serial.printf("Failed to parse MAC address: %s\n", macAddress);
     return false;
   }
   
-  sqlite3_bind_int64(stmt, 1, timestamp);
-  sqlite3_bind_text(stmt, 2, macAddress, -1, SQLITE_TRANSIENT);
+  // Convert timestamp to uint32_t for EPOCH type
+  uint32_t epochTime = (uint32_t)timestamp;
   
-  bool success = (sqlite3_step(stmt) == SQLITE_DONE);
-  if (success) {
+  // UPDATE BTClients SET LastSeen = timestamp WHERE Address = macAddress
+  IMDBResult result = db.update("Address", &macBytes, "LastSeen", &epochTime);
+  
+  if (result == IMDB_OK) {
     Serial.println("Updated last seen time.");
+    return true;
+  } else {
+    Serial.printf("Failed to update LastSeen: %s\n", ESP32IMDB::resultToString(result));
+    return false;
   }
-  
-  sqlite3_finalize(stmt);
-  return success;
 }
 
 bool insertNewDevice(const char* macAddress, unsigned long timestamp) {
-  sqlite3_stmt *stmt = nullptr;
-  char query[256];
-  snprintf(query, sizeof(query), "INSERT INTO BTClients (Address, LastSeen, TimesSeen) VALUES(?, ?, 1)");
-  
-  int retval = sqlite3_prepare_v2(BTDB, query, -1, &stmt, nullptr);
-  if (retval != SQLITE_OK) {
-    Serial.printf("Failed to prepare insert: %s\n", sqlite3_errmsg(BTDB));
-    if (stmt) sqlite3_finalize(stmt);
+  // Parse MAC address string to bytes
+  uint8_t macBytes[6];
+  if (!ESP32IMDB::parseMacAddress(macAddress, macBytes)) {
+    Serial.printf("Failed to parse MAC address: %s\n", macAddress);
     return false;
   }
   
-  sqlite3_bind_text(stmt, 1, macAddress, -1, SQLITE_TRANSIENT);
-  sqlite3_bind_int64(stmt, 2, timestamp);
+  // Convert timestamp to uint32_t for EPOCH type
+  uint32_t epochTime = (uint32_t)timestamp;
+  int32_t timesSeen = 1;
   
-  bool success = (sqlite3_step(stmt) == SQLITE_DONE);
-  if (success) {
+  // INSERT INTO BTClients (Address, LastSeen, TimesSeen) VALUES(macAddress, timestamp, 1)
+  const void* values[] = {&macBytes, &epochTime, &timesSeen};
+  IMDBResult result = db.insert(values);
+  
+  if (result == IMDB_OK) {
     Serial.printf("Added new device to database: %s\n", macAddress);
+    return true;
+  } else {
+    Serial.printf("Failed to insert device: %s\n", ESP32IMDB::resultToString(result));
+    return false;
   }
-  
-  sqlite3_finalize(stmt);
-  return success;
 }
 
 int64_t getDeviceLastSeen(const char* macAddress) {
-  sqlite3_stmt *stmt = nullptr;
-  char query[256];
-  snprintf(query, sizeof(query), "SELECT LastSeen FROM BTClients WHERE Address = ?");
-  
-  int retval = sqlite3_prepare_v2(BTDB, query, -1, &stmt, nullptr);
-  if (retval != SQLITE_OK) {
-    Serial.printf("Failed to prepare select: %s\n", sqlite3_errmsg(BTDB));
-    if (stmt) sqlite3_finalize(stmt);
+  // Parse MAC address string to bytes
+  uint8_t macBytes[6];
+  if (!ESP32IMDB::parseMacAddress(macAddress, macBytes)) {
+    Serial.printf("Failed to parse MAC address: %s\n", macAddress);
     return -1;
   }
   
-  sqlite3_bind_text(stmt, 1, macAddress, -1, SQLITE_TRANSIENT);
+  // SELECT LastSeen FROM BTClients WHERE Address = macAddress
+  IMDBSelectResult result;
+  IMDBResult queryResult = db.select("LastSeen", "Address", &macBytes, &result);
   
-  int64_t lastSeen = -1;
-  if (sqlite3_step(stmt) == SQLITE_ROW) {
-    lastSeen = sqlite3_column_int64(stmt, 0);
+  if (queryResult == IMDB_OK && result.hasValue) {
+    return (int64_t)result.epochValue;
+  } else if (queryResult == IMDB_ERROR_NO_RECORDS) {
+    return -1; // Device not found
+  } else {
+    Serial.printf("Failed to select LastSeen: %s\n", ESP32IMDB::resultToString(queryResult));
+    return -1;
   }
-  
-  sqlite3_finalize(stmt);
-  return lastSeen;
 }
 
 void processBluetoothDevice(BLEAdvertisedDevice& device, unsigned long currentTime, unsigned long squelchTime) {
@@ -916,9 +910,6 @@ void setup() {
   rgbled[0] = CRGB::Green;
   FastLED.show();
 
-  // Initialize local storage (SPIFFS)
-  SPIFFS.begin(true); // true forces format on a mount failure
-
   // Setup NTP time synchronization
   ntp.begin(configNtpServer); // Start the NTP client
   
@@ -935,22 +926,20 @@ void setup() {
   Serial.printf("Dwell Time: %d seconds\n", DWELL_TIME);
   Serial.println("=============================\n");
 
-  // Initialize SQLite DB
-  sqlite3_initialize();
-  // Open the SQLite DB file (if it does not exit, create it)
-  sqlite3_open("/spiffs/BTDB.db", &BTDB);
-
-  // Create the Bluetooth device tracking table (BTClients)
-  sqlite3_stmt *stmt = nullptr;
-  const char* createTable = "CREATE TABLE IF NOT EXISTS BTClients (Address, LastSeen INT, TimesSeen INT);";
-  int retval = sqlite3_prepare_v2(BTDB, createTable, -1, &stmt, nullptr);
-  if (retval == SQLITE_OK) {
-    int result = sqlite3_step(stmt); // Should output 101 (SQLITE_DONE) for success
-    Serial.printf("Table creation result: %d\n", result);
+  // Initialize ESP32IMDB In-Memory Database
+  // Define table structure: Address (MAC), LastSeen (EPOCH), TimesSeen (INT32)
+  IMDBColumn columns[] = {
+    {"Address", IMDB_TYPE_MAC},
+    {"LastSeen", IMDB_TYPE_EPOCH},
+    {"TimesSeen", IMDB_TYPE_INT32}
+  };
+  
+  IMDBResult dbResult = db.createTable(columns, 3);
+  if (dbResult == IMDB_OK) {
+    Serial.println("ESP32IMDB table created successfully.");
   } else {
-    Serial.printf("Failed to create table: %s\n", sqlite3_errmsg(BTDB));
+    Serial.printf("Failed to create ESP32IMDB table: %s\n", ESP32IMDB::resultToString(dbResult));
   }
-  sqlite3_finalize(stmt);
 
   // Initialize Bluetooth
 	BLEDevice::init("");
@@ -1010,7 +999,7 @@ void loop() {
   for(int i = 0; i < scanResults->getCount(); i++) {
     BLEAdvertisedDevice currentBLE = scanResults->getDevice(i);
     if (currentBLE.getRSSI() > BT_RSSI_THRESHOLD) {
-      Serial.println(currentBLE.toString().c_str());
+      Serial.println(currentBLE.toString());
       processBluetoothDevice(currentBLE, scanTime, scanSquelch);
     }
   }
@@ -1022,4 +1011,3 @@ void loop() {
   // Motion detection monitoring routine
   checkMotionLevel();
 }
-
