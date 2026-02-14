@@ -9,7 +9,7 @@
      - Install version 3.3.6
 6. Open the Libraries Manager
    - Type "ESP32IMDB" in the search field and select "ESP32IMDB by Xorlent"
-     - Install version 1.1.0
+     - Install version 1.1.2
    - Type "NTP" in the search field and select "NTP by Stefan Staub"
      - Install version 1.7.0
    - Type "FastLED" in the search field and select "FastLED by Daniel Garcia"
