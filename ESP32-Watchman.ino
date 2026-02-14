@@ -53,6 +53,8 @@ IPAddress configSubnet;
 IPAddress configDns;
 IPAddress configSyslog;
 
+#define IMDB_ENABLE_PERSISTENCE 0
+
 #include <Ethernet.h>
 #include "BLEDevice.h"
 #include "ESP32IMDB.h"
@@ -1011,3 +1013,4 @@ void loop() {
   // Motion detection monitoring routine
   checkMotionLevel();
 }
+
