@@ -10,9 +10,9 @@
 #ifndef _M5_DLIGHT_H_
 #define _M5_DLIGHT_H_
 
-#include "Arduino.h"
-#include "Wire.h"
-#include "pins_arduino.h"
+#include <Arduino.h>
+#include <Wire.h>
+#include <pins_arduino.h>
 
 #define DEVICE_I2C_ADDR 0x23
 
