@@ -9,9 +9,7 @@ Remote, unmanned facilites can provide ample opportunity for tampering, physical
 3. Optionally, either:
    - A [Ultrasonic Distance I2C](https://shop.m5stack.com/products/ultrasonic-distance-unit-i2c-rcwl-9620)
    - A [DLight Unit](https://shop.m5stack.com/products/dlight-unit-ambient-light-sensor-bh1750fvi-tr)
-
-## Device Capability Comparison
-This project generates Syslog notifications for all detected activity.
+4. A Syslog server to receive alerts from the device
 
 ## Configuration
 All configuration is managed through a serial terminal interface. On first boot, the device automatically enters configuration mode. After initial setup, you can re-enter configuration mode at any time by pressing **'C'** within 5 seconds of device startup.
@@ -82,8 +80,4 @@ _Once you've successfully programmed a single unit, skip step 1.  Repeating this
 - Ethernet
   - W5500 PHY
   - 10/100 Mbit twisted pair copper
-
   - IEEE 802.3af Power-over-Ethernet
-
-
-
