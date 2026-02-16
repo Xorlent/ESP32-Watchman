@@ -1,7 +1,7 @@
 # ESP32-Watchman
 ## PoE-powered remote facility monitor that scans for and alerts on nearby Bluetooth devices and light level changes, or detected motion
 ## Background
-Remote, unmanned facilites can provide ample opportunity for tampering, physical theft, and network penetration attacks.  The M5Stack AtomPoE together with the ESP32 S3 SoC can be used as a perimeter sensing device, sending detection information to a configured Syslog server.  These Syslog messages can help provide visibility into activity that may indicate traditional physical security measures have been circumvented.
+Remote, unmanned facilites can provide ample opportunity for tampering, physical theft, and network penetration attacks.  The M5Stack AtomPoE together with the ESP32 S3 SoC can be used as a perimeter sensing device, sending detection information to a configured Syslog server.  These Syslog messages can help provide visibility into activity that may indicate traditional physical security measures have been circumvented.  In conjunction with an [ESP32 Honeypot](https://github.com/Xorlent/The-26-Dollar-Honeypot), you can build full physical and cyber sensing capabilities for a total cost of under $70.
 
 ## Requirements
 1. M5Stack [AtomPoE Base W5500](https://shop.m5stack.com/products/atomic-poe-base-w5500)
@@ -84,4 +84,5 @@ _Once you've successfully programmed a single unit, skip step 1.  Repeating this
   - 10/100 Mbit twisted pair copper
 
   - IEEE 802.3af Power-over-Ethernet
+
 
