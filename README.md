@@ -29,7 +29,7 @@ Configurable options:
 Configuration changes are saved to non-volatile memory and persist across reboots.
 
 Advanced options:
-- Active Bluetooth Scan
+- Active Bluetooth Scan  
 _Active Bluetooth scans will attempt to connect and get service information for all newly discovered devices for higher fidelity results_
   - Edit Config.h and change #define ACTIVE_BT_SCANS 0 to #define ACTIVE_BT_SCANS 1
 
@@ -94,3 +94,4 @@ _Once you've successfully programmed a single unit, skip step 1.  Repeating this
 - https://github.com/dannymcc/bluehood - Many thanks for turning me onto "Self-administered" bit checking and Bluetooth service probing, greatly enhancing the capabilities of this project!
 
 - https://github.com/NordicSemiconductor/bluetooth-numbers-database - Information that helped fill some gaps in Bluetooth service and manufacturer data
+
