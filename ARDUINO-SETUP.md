@@ -6,11 +6,11 @@
 4. Close/save the Preferences window
 5. Open the Boards Manager
    - Type "esp32" in the search field and select "esp32 by Espressif Systems" (__NOT "Arduino ESP32 Boards"__)
-     - Install version 3.3.6
+     - Install version 3.3.7
 6. Open the Libraries Manager
    - Type "ESP32IMDB" in the search field and select "ESP32IMDB by Xorlent"
      - Install version 1.1.2
+   - Type "ESP32_WS2812B" in the search field and select "ESP32_WS2812B by Xorlent"
+     - Install version 1.0.0
    - Type "NTP" in the search field and select "NTP by Stefan Staub"
-     - Install version 1.7.0
-   - Type "FastLED" in the search field and select "FastLED by Daniel Garcia"
-     - Install version 3.10.3
+     - Install version 1.7.1

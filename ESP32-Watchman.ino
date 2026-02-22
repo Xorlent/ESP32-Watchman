@@ -2,58 +2,13 @@
 GNU GENERAL PUBLIC LICENSE Version 3, 29 June 2007
 
 Libraries and supporting code incorporates other licenses, see https://github.com/Xorlent/ESP32-Watchman/blob/main/LICENSE-3RD-PARTY.md
+
+NOTE: Static default settings are located in Config.h
+Runtime configuration is done via the Serial console.
+To enter configuration mode, open the serial console during bootup, press "C" and hit enter.
 */
-////////--------------------------------------------- DEFAULT CONFIG SETTINGS -----------------------------------------------////////
 
-// Default values (used if no configuration exists)
-const char DEFAULT_HOSTNAME[] = "ESP32-Watchman";
-const char DEFAULT_IP[] = "192.168.1.100";
-const char DEFAULT_GATEWAY[] = "192.168.1.1";
-const char DEFAULT_SUBNET[] = "255.255.255.0";
-const char DEFAULT_DNS[] = "9.9.9.9";
-const char DEFAULT_NTP_SERVER[] = "pool.ntp.org";
-const char DEFAULT_SYSLOG[] = "192.168.1.10";
-
-// Set the minimum Bluetooth signal strength to report.  Setting this value closer to 0 will decrease sensitivity.
-// RSSI guidance: -80 = weak, -70 = reasonable (a typical wall will prevent this signal level), -60 = good, -50 = strong (basically, within a few feet of device)
-int BT_RSSI_THRESHOLD = -71;
-
-// Set the number of seconds to wait between detections of the same Bluetooth device (MAC) address.
-// Most mobile devices randomize MAC addresses, so this will impact results.
-int DWELL_TIME = 3600;
-
-// Minimum time in milliseconds between retriggers of the same event (light or motion) to prevent log flooding from sensor noise.
-const unsigned int RETRIGGER_TIME = 60000;
-
-// Time to wait after startup before starting light detection, in milliseconds (default 3 minutes).
-// This allows time for the device to boot and for the user to leave the area before light sensing begins.
-const unsigned int LIGHT_INIT_WAIT = 180000;
-// Set the percentage change in ambient light level required to trigger a log message.
-// Setting this value lower will increase sensitivity, but may result in more false positives due to sensor noise.
-const unsigned int LIGHT_DELTA_PERCENT = 20;
-// Set the minimum interval between ambient light samples to check for changes, in milliseconds.
-const unsigned long LIGHT_SAMPLE_INTERVAL = 3000;
-
-// Time to wait after startup before starting motion detection, in milliseconds (default 3 minutes).
-// This allows time for the device to boot and for the user to leave the area before motion sensing begins.
-const unsigned int MOTION_INIT_WAIT = 180000;
-// Set the deadband (mm) for motion to be detected. Setting this value lower will increase sensitivity, but may result in more false positives due to sensor noise.
-const unsigned int MOTION_DEADBAND = 10;
-// Set the minimum interval between motion sensing samples, in milliseconds.
-const unsigned long MOTION_SAMPLE_INTERVAL = 3000;
-
-////////--------------------------------------- DO NOT EDIT ANYTHING BELOW THIS LINE ---------------------------------------////////
-
-// Configuration loaded from preferences
-char configHostname[64];
-char configNtpServer[128];
-IPAddress configIp;
-IPAddress configGateway;
-IPAddress configSubnet;
-IPAddress configDns;
-IPAddress configSyslog;
-
-#define IMDB_ENABLE_PERSISTENCE 0
+//#define IMDB_ENABLE_PERSISTENCE 0
 
 #include <Ethernet.h>
 #include <BLEDevice.h>
@@ -64,6 +19,11 @@ IPAddress configSyslog;
 #include <Preferences.h>
 #include "M5_DLight.h"
 #include "Unit_Sonic.h"
+#include "BLEClassifier.h"
+#include "Database.h"
+#include "Bluetooth.h"
+#include "SensorAccessory.h"
+#include "Config.h"
 
 // RGBLED Indicator setup
 //
@@ -72,63 +32,26 @@ IPAddress configSyslog;
 // Green = Connected
 // Purple = NTP sync failure
 // Blue = Active Bluetooth poll
-#define FASTLED_ALL_PINS_HARDWARE_SPI
-#include <FastLED.h>
-CRGB rgbled[1];
+// Flashing Blue = Active Bluetooth probe (service enumeration)
+#include <WS2812B.h>
+WS2812B rgbled;
 #define LED_DATA_PIN 35
 // End RGBLED Indicator setup
 
-// Preferences data setup
-//
-// Creates and saves an appropriate random MAC address to the device, re-loading this uniquely-generated MAC on each restart
-Preferences SavedConfig;
-uint8_t MAC4[2] = {};
-uint8_t MAC5[2] = {};
-uint8_t MAC6[2] = {};
-
-// Configuration flags
+// Configuration mode flag (local to main sketch)
 bool configMode = false;
-bool needsConfiguration = false;
-bool ethernetInitialized = false;
-// End Preferences data setup
-
-// SPI Ethernet config setup
-#define ETH_PHY_CS      6
-#define ETH_SPI_SCK     5
-#define ETH_SPI_MISO    7
-#define ETH_SPI_MOSI    8
-// End SPI Etherenet config setup
-
-// ESP32IMDB In-Memory Database setup
-ESP32IMDB db;
-// End ESP32IMDB setup
 
 // Bluetooth setup
 BLEScan *pBLEScan;
 unsigned long scanTime;
 unsigned long scanSquelch;
+unsigned long lastBLEScanTime = 0;
 // End Bluetooth setup
-
-// DLIGHT ambient light sensor setup
-M5_DLight dlight;
-bool dlightAvailable = false;
-unsigned long lastLightSampleTime = 0;
-unsigned long lastLightAlertTime = 0;
-uint16_t lastLightValue = 0;
-// End DLIGHT setup
-
-// Ultrasonic motion sensor setup
-SONIC_I2C ultrasonic;
-bool ultrasonicAvailable = false;
-unsigned long lastMotionSampleTime = 0;
-unsigned long lastMotionAlertTime = 0;
-float lastDistanceValue = 0.0;
-unsigned long bootTime = 0;
-// End ultrasonic setup
 
 // UDP for NTP time sync setup
 EthernetUDP udp;
 NTP ntp(udp);
+unsigned long lastNTPUpdate = 0;
 // End UDP for NTP time sync setup
 
 // Syslog setup
@@ -143,318 +66,27 @@ void formatTimestamp(int64_t timestamp, char* buffer, size_t bufferSize) {
 }
 
 void sendSyslog(const char* message) {
-  char syslogMessage[512];
+  char syslogMessage[1420];
   // Format: <PRI>TIMESTAMP HOSTNAME MESSAGE
   // PRI = facility * 8 + severity (facility 1 = user, severity 6 = info)
-  snprintf(syslogMessage, sizeof(syslogMessage), "<14>%s %s %s", 
+  int headerLength = snprintf(syslogMessage, sizeof(syslogMessage), "<14>%s %s ", 
            ntp.formattedTime("%b %d %T "), 
-           configHostname, 
-           message);
+           configHostname);
+  
+  // Calculate remaining space for message (leave room for null terminator)
+  int maxMessageLength = sizeof(syslogMessage) - headerLength - 1;
+  
+  // Truncate message if needed to fit within 1420 byte limit
+  if (strlen(message) > maxMessageLength) {
+    strncat(syslogMessage, message, maxMessageLength - 3);
+    strcat(syslogMessage, "...");  // Indicate truncation
+  } else {
+    strcat(syslogMessage, message);
+  }
+  
   syslogUdp.beginPacket(configSyslog, SYSLOG_PORT);
   syslogUdp.print(syslogMessage);
   syslogUdp.endPacket();
-}
-
-// DLIGHT module detection and initialization
-bool detectDLightModule() {
-  // Try to initialize the DLIGHT module on I2C
-  // M5 Atom uses GPIO2 (SDA) and GPIO1 (SCL)
-  Wire.begin(2, 1);
-  dlight.begin(&Wire, 2, 1);
-  
-  // Attempt to read from the sensor to verify presence
-  delay(100); // Give sensor time to initialize
-  dlight.setMode(CONTINUOUSLY_H_RESOLUTION_MODE2);
-  delay(350); // Wait for measurement
-  
-  uint16_t testValue = dlight.getLUX();
-  
-  Serial.printf("DLIGHT test reading: %d LUX\n", testValue);
-  
-  // Check for unreasonable values that indicate no sensor present
-  if (testValue > 54500) {
-    return false; // Unreasonable reading indicates no sensor
-  }
-  
-  return true; // Sensor responded with plausible data
-}
-
-// Check and report ambient light changes
-void checkLightLevel() {
-  if (!dlightAvailable) {
-    return; // No sensor available
-  }
-  
-  unsigned long currentTime = millis();
-  
-  // Check if we're still in the initialization wait period
-  if (currentTime - bootTime < LIGHT_INIT_WAIT) {
-    return; // Still in init wait period, don't alert yet
-  }
-  
-  // Check if it's time to sample
-  if (currentTime - lastLightSampleTime < LIGHT_SAMPLE_INTERVAL) {
-    return; // Not time yet
-  }
-  
-  // Update sample time
-  lastLightSampleTime = currentTime;
-  
-  // Read current light level
-  uint16_t currentLightValue = dlight.getLUX();
-  
-  // If this is the first reading, just store it
-  if (lastLightValue == 0 && currentLightValue > 0) {
-    lastLightValue = currentLightValue;
-    Serial.printf("Initial light level: %d LUX\n", currentLightValue);
-    return;
-  }
-  
-  // Calculate percentage change
-  if (lastLightValue == 0 && currentLightValue == 0) {
-    return; // No change, both are zero
-  }
-  
-  int percentChange;
-  if (lastLightValue == 0) {
-    percentChange = 100;
-  } else {
-    int diff = abs((int)currentLightValue - (int)lastLightValue);
-    percentChange = (diff * 100) / lastLightValue;
-  }
-  
-  Serial.printf("Light level: %d LUX (change: %d%%)\n", currentLightValue, percentChange);
-  
-  // Check if change exceeds threshold
-  if (percentChange >= LIGHT_DELTA_PERCENT) {
-    // Check if enough time has passed since last alert to prevent log flooding
-    if (currentTime - lastLightAlertTime >= RETRIGGER_TIME) {
-      char logMsg[256];
-      snprintf(logMsg, sizeof(logMsg), 
-               "Room ambient light level changed from %d to %d LUX (%d%% change)",
-               lastLightValue, currentLightValue, percentChange);
-      Serial.println(logMsg);
-      sendSyslog(logMsg);
-      lastLightAlertTime = currentTime; // Update last alert time
-    } else {
-      Serial.printf("Light change detected but suppressed (retrigger time not elapsed)\n");
-    }
-  }
-  
-  // Update last value
-  lastLightValue = currentLightValue;
-}
-
-// Ultrasonic module detection and initialization
-bool detectUltrasonicModule() {
-  // Try to initialize the ultrasonic module on I2C
-  // M5 Atom uses GPIO2 (SDA) and GPIO1 (SCL)
-  Wire.begin(2, 1);
-  ultrasonic.begin(&Wire, 0x57, 2, 1);
-  
-  // Attempt to read from the sensor to verify presence
-  delay(200); // Give sensor time to initialize
-  
-  float testValue = ultrasonic.getDistance();
-  
-  // If we get a reasonable value (10-4499 mm)
-  // Consider the module present
-  Serial.printf("Ultrasonic test reading: %.2f mm\n", testValue);
-  
-  // Check if the value is within valid range
-  if (testValue >= 10.0 && testValue <= 4499.0) {
-    return true; // Sensor responded with valid data
-  }
-  return false;
-}
-
-// Check and report motion/distance changes
-void checkMotionLevel() {
-  if (!ultrasonicAvailable) {
-    return; // No sensor available
-  }
-  
-  unsigned long currentTime = millis();
-  
-  // Check if we're still in the initialization wait period
-  if (currentTime - bootTime < MOTION_INIT_WAIT) {
-    return; // Still in init wait period, don't alert yet
-  }
-  
-  // Check if it's time to sample
-  if (currentTime - lastMotionSampleTime < MOTION_SAMPLE_INTERVAL) {
-    return; // Not time yet
-  }
-  
-  // Update sample time
-  lastMotionSampleTime = currentTime;
-  
-  // Read current distance
-  float currentDistanceValue = ultrasonic.getDistance();
-  
-  // If this is the first reading (after init wait), just store it
-  if (lastDistanceValue == 0.0 && currentDistanceValue > 0.0) {
-    lastDistanceValue = currentDistanceValue;
-    Serial.printf("Initial distance reading: %.2f mm\n", currentDistanceValue);
-    return;
-  }
-  
-  // Calculate the change in distance
-  float distanceChange = abs(currentDistanceValue - lastDistanceValue);
-  
-  Serial.printf("Distance: %.2f mm (change: %.2f mm)\n", currentDistanceValue, distanceChange);
-  
-  // Check if change exceeds deadband threshold
-  if (distanceChange >= MOTION_DEADBAND) {
-    // Check if enough time has passed since last alert to prevent log flooding
-    if (currentTime - lastMotionAlertTime >= RETRIGGER_TIME) {
-      char logMsg[256];
-      snprintf(logMsg, sizeof(logMsg), 
-               "Motion detected: Distance changed from %.2f to %.2f mm (%.2f mm change)",
-               lastDistanceValue, currentDistanceValue, distanceChange);
-      Serial.println(logMsg);
-      sendSyslog(logMsg);
-      lastMotionAlertTime = currentTime; // Update last alert time
-    } else {
-      Serial.printf("Motion change detected but suppressed (retrigger time not elapsed)\n");
-    }
-  }
-  
-  // Update last value
-  lastDistanceValue = currentDistanceValue;
-}
-
-// Database helper functions
-bool updateDeviceTimesSeen(const char* macAddress) {
-  // Parse MAC address string to bytes
-  uint8_t macBytes[6];
-  if (!ESP32IMDB::parseMacAddress(macAddress, macBytes)) {
-    Serial.printf("Failed to parse MAC address: %s\n", macAddress);
-    return false;
-  }
-  
-  // UPDATE BTClients SET TimesSeen = TimesSeen + 1 WHERE Address = macAddress
-  IMDBResult result = db.updateWithMath("Address", &macBytes, "TimesSeen", IMDB_MATH_ADD, 1);
-  
-  if (result == IMDB_OK) {
-    Serial.println("Updated times seen.");
-    return true;
-  } else {
-    Serial.printf("Failed to update TimesSeen: %s\n", ESP32IMDB::resultToString(result));
-    return false;
-  }
-}
-
-bool updateDeviceLastSeen(const char* macAddress, unsigned long timestamp) {
-  // Parse MAC address string to bytes
-  uint8_t macBytes[6];
-  if (!ESP32IMDB::parseMacAddress(macAddress, macBytes)) {
-    Serial.printf("Failed to parse MAC address: %s\n", macAddress);
-    return false;
-  }
-  
-  // Convert timestamp to uint32_t for EPOCH type
-  uint32_t epochTime = (uint32_t)timestamp;
-  
-  // UPDATE BTClients SET LastSeen = timestamp WHERE Address = macAddress
-  IMDBResult result = db.update("Address", &macBytes, "LastSeen", &epochTime);
-  
-  if (result == IMDB_OK) {
-    Serial.println("Updated last seen time.");
-    return true;
-  } else {
-    Serial.printf("Failed to update LastSeen: %s\n", ESP32IMDB::resultToString(result));
-    return false;
-  }
-}
-
-bool insertNewDevice(const char* macAddress, unsigned long timestamp) {
-  // Parse MAC address string to bytes
-  uint8_t macBytes[6];
-  if (!ESP32IMDB::parseMacAddress(macAddress, macBytes)) {
-    Serial.printf("Failed to parse MAC address: %s\n", macAddress);
-    return false;
-  }
-  
-  // Convert timestamp to uint32_t for EPOCH type
-  uint32_t epochTime = (uint32_t)timestamp;
-  int32_t timesSeen = 1;
-  
-  // INSERT INTO BTClients (Address, LastSeen, TimesSeen) VALUES(macAddress, timestamp, 1)
-  const void* values[] = {&macBytes, &epochTime, &timesSeen};
-  IMDBResult result = db.insert(values);
-  
-  if (result == IMDB_OK) {
-    Serial.printf("Added new device to database: %s\n", macAddress);
-    return true;
-  } else {
-    Serial.printf("Failed to insert device: %s\n", ESP32IMDB::resultToString(result));
-    return false;
-  }
-}
-
-int64_t getDeviceLastSeen(const char* macAddress) {
-  // Parse MAC address string to bytes
-  uint8_t macBytes[6];
-  if (!ESP32IMDB::parseMacAddress(macAddress, macBytes)) {
-    Serial.printf("Failed to parse MAC address: %s\n", macAddress);
-    return -1;
-  }
-  
-  // SELECT LastSeen FROM BTClients WHERE Address = macAddress
-  IMDBSelectResult result;
-  IMDBResult queryResult = db.select("LastSeen", "Address", &macBytes, &result);
-  
-  if (queryResult == IMDB_OK && result.hasValue) {
-    return (int64_t)result.epochValue;
-  } else if (queryResult == IMDB_ERROR_NO_RECORDS) {
-    return -1; // Device not found
-  } else {
-    Serial.printf("Failed to select LastSeen: %s\n", ESP32IMDB::resultToString(queryResult));
-    return -1;
-  }
-}
-
-void processBluetoothDevice(BLEAdvertisedDevice& device, unsigned long currentTime, unsigned long squelchTime) {
-  // Copy MAC address to local buffer
-  char macAddress[18];
-  strncpy(macAddress, device.getAddress().toString().c_str(), sizeof(macAddress) - 1);
-  macAddress[sizeof(macAddress) - 1] = '\0';
-  
-  int64_t lastSeen = getDeviceLastSeen(macAddress);
-  
-  // Device not in database - insert it
-  if (lastSeen == -1) {
-    char logMsg[256];
-    snprintf(logMsg, sizeof(logMsg), "Device ID %s -> NOT PREVIOUSLY SEEN.", macAddress);
-    Serial.println(logMsg);
-    sendSyslog(logMsg);
-    insertNewDevice(macAddress, currentTime);
-    return;
-  }
-  
-  // Device is squelched (seen too recently)
-  if (lastSeen >= squelchTime) {
-    char timeStr[32];
-    formatTimestamp(lastSeen, timeStr, sizeof(timeStr));
-    char logMsg[256];
-    snprintf(logMsg, sizeof(logMsg), "Device ID %s SQUELCHED. -> Last Seen: %s", macAddress, timeStr);
-    Serial.println(logMsg);
-    sendSyslog(logMsg);
-    return;
-  }
-  
-  // Device seen outside squelch period - update record
-  char timeStr[32];
-  formatTimestamp(lastSeen, timeStr, sizeof(timeStr));
-  char logMsg[256];
-  snprintf(logMsg, sizeof(logMsg), "Device ID %s -> Last Seen: %s", macAddress, timeStr);
-  Serial.println(logMsg);
-  sendSyslog(logMsg);
-  
-  if (updateDeviceTimesSeen(macAddress)) {
-    updateDeviceLastSeen(macAddress, currentTime);
-  }
 }
 
 // Configuration validation and input functions
@@ -512,291 +144,6 @@ bool validateNtpServer(const char* input) {
   return true;
 }
 
-String readSerialLine() {
-  String input = "";
-  while (true) {
-    if (Serial.available() > 0) {
-      char c = Serial.read();
-      if (c == '\n' || c == '\r') {
-        break;  // Return input (even if empty)
-      } else if (c == '\b' || c == 127) { // Backspace
-        if (input.length() > 0) {
-          input.remove(input.length() - 1);
-          Serial.print("\b \b");
-        }
-      } else if (isPrintable(c)) {
-        input += c;
-        Serial.print(c);
-      }
-    }
-    delay(10);
-  }
-  Serial.println();
-  return input;
-}
-
-void saveConfiguration() {
-  SavedConfig.begin("DeviceConfig", false);
-  SavedConfig.putString("hostname", configHostname);
-  SavedConfig.putString("ntpServer", configNtpServer);
-  SavedConfig.putUInt("ip", (uint32_t)configIp);
-  SavedConfig.putUInt("gateway", (uint32_t)configGateway);
-  SavedConfig.putUInt("subnet", (uint32_t)configSubnet);
-  SavedConfig.putUInt("dns", (uint32_t)configDns);
-  SavedConfig.putUInt("syslog", (uint32_t)configSyslog);
-  SavedConfig.putInt("rssi", BT_RSSI_THRESHOLD);
-  SavedConfig.putInt("dwellTime", DWELL_TIME);
-  SavedConfig.end();
-  Serial.println("\nConfiguration saved successfully!");
-}
-
-void loadConfiguration() {
-  SavedConfig.begin("DeviceConfig", true);
-  
-  String savedHostname = SavedConfig.getString("hostname", "");
-  String savedNtpServer = SavedConfig.getString("ntpServer", "");
-  uint32_t savedIp = SavedConfig.getUInt("ip", 0);
-  
-  // Check if configuration exists
-  if (savedHostname.length() == 0 || savedIp == 0) {
-    // No saved configuration - load factory defaults and flag for configuration
-    needsConfiguration = true;
-    strncpy(configHostname, DEFAULT_HOSTNAME, sizeof(configHostname) - 1);
-    configHostname[sizeof(configHostname) - 1] = '\0';
-    strncpy(configNtpServer, DEFAULT_NTP_SERVER, sizeof(configNtpServer) - 1);
-    configNtpServer[sizeof(configNtpServer) - 1] = '\0';
-    
-    validateIPAddress(DEFAULT_IP, configIp);
-    validateIPAddress(DEFAULT_GATEWAY, configGateway);
-    validateIPAddress(DEFAULT_SUBNET, configSubnet);
-    validateIPAddress(DEFAULT_DNS, configDns);
-    validateIPAddress(DEFAULT_SYSLOG, configSyslog);
-  } else {
-    // Load saved configuration
-    strncpy(configHostname, savedHostname.c_str(), sizeof(configHostname) - 1);
-    configHostname[sizeof(configHostname) - 1] = '\0';
-    strncpy(configNtpServer, savedNtpServer.c_str(), sizeof(configNtpServer) - 1);
-    configNtpServer[sizeof(configNtpServer) - 1] = '\0';
-    
-    configIp = savedIp;
-    configGateway = SavedConfig.getUInt("gateway", 0);
-    configSubnet = SavedConfig.getUInt("subnet", 0);
-    configDns = SavedConfig.getUInt("dns", 0);
-    configSyslog = SavedConfig.getUInt("syslog", 0);
-    BT_RSSI_THRESHOLD = SavedConfig.getInt("rssi", BT_RSSI_THRESHOLD);
-    DWELL_TIME = SavedConfig.getInt("dwellTime", DWELL_TIME);
-  }
-  
-  SavedConfig.end();
-}
-
-void enterConfigurationMode() {
-  Serial.println("\n\n========================================");
-  Serial.println("    ESP32-Watchman Configuration");
-  Serial.println("========================================\n");
-  
-  // Hostname
-  while (true) {
-    Serial.print("Enter Hostname (current: ");
-    Serial.print(configHostname);
-    Serial.print(") [ENTER uses current/default value]: ");
-    String input = readSerialLine();
-    if (input.length() == 0) break; // Keep current
-    if (validateHostname(input.c_str())) {
-      strncpy(configHostname, input.c_str(), sizeof(configHostname) - 1);
-      configHostname[sizeof(configHostname) - 1] = '\0';
-      break;
-    }
-    Serial.println("Invalid hostname. Use only alphanumeric characters, hyphens, and underscores (max 63 chars).");
-  }
-  
-  // IP Address
-  while (true) {
-    Serial.print("Enter IP Address (current: ");
-    Serial.print(configIp);
-    Serial.print(") [ENTER uses current/default value]: ");
-    String input = readSerialLine();
-    if (input.length() == 0) break;
-    if (validateIPAddress(input.c_str(), configIp)) break;
-    Serial.println("Invalid IP address. Format: xxx.xxx.xxx.xxx");
-  }
-  
-  // Subnet Mask
-  while (true) {
-    Serial.print("Enter Subnet Mask (current: ");
-    Serial.print(configSubnet);
-    Serial.print(") [ENTER uses current/default value]: ");
-    String input = readSerialLine();
-    if (input.length() == 0) break;
-    if (validateIPAddress(input.c_str(), configSubnet)) break;
-    Serial.println("Invalid subnet mask. Format: xxx.xxx.xxx.xxx");
-  }
-  
-  // Gateway
-  while (true) {
-    Serial.print("Enter Gateway Address (current: ");
-    Serial.print(configGateway);
-    Serial.print(") [ENTER uses current/default value]: ");
-    String input = readSerialLine();
-    if (input.length() == 0) break;
-    if (validateIPAddress(input.c_str(), configGateway)) break;
-    Serial.println("Invalid gateway address. Format: xxx.xxx.xxx.xxx");
-  }
-  
-  // DNS
-  while (true) {
-    Serial.print("Enter DNS Server Address (current: ");
-    Serial.print(configDns);
-    Serial.print(") [ENTER uses current/default value]: ");
-    String input = readSerialLine();
-    if (input.length() == 0) break;
-    if (validateIPAddress(input.c_str(), configDns)) break;
-    Serial.println("Invalid DNS address. Format: xxx.xxx.xxx.xxx");
-  }
-  
-  // Syslog
-  while (true) {
-    Serial.print("Enter Syslog Server Address (current: ");
-    Serial.print(configSyslog);
-    Serial.print(") [ENTER uses current/default value]: ");
-    String input = readSerialLine();
-    if (input.length() == 0) break;
-    if (validateIPAddress(input.c_str(), configSyslog)) break;
-    Serial.println("Invalid syslog address. Format: xxx.xxx.xxx.xxx");
-  }
-  
-  // NTP Server
-  while (true) {
-    Serial.print("Enter NTP Server Name or Address (current: ");
-    Serial.print(configNtpServer);
-    Serial.print(") [ENTER uses current/default value]: ");
-    String input = readSerialLine();
-    if (input.length() == 0) break;
-    if (validateNtpServer(input.c_str())) {
-      strncpy(configNtpServer, input.c_str(), sizeof(configNtpServer) - 1);
-      configNtpServer[sizeof(configNtpServer) - 1] = '\0';
-      break;
-    }
-    Serial.println("Invalid NTP server. Must be a valid hostname or IP address.");
-  }
-  
-  // RSSI Threshold
-  Serial.println("\nThis value sets the minimum Bluetooth signal strength to report.");
-  Serial.println("Setting this value closer to 0 will decrease sensitivity.");
-  Serial.println("RSSI guidance: -80 = weak, -70 = reasonable (a typical wall will prevent this signal level),");
-  Serial.println("               -60 = good, -50 = strong (basically, within a few feet of device)");
-  while (true) {
-    Serial.print("Enter Bluetooth RSSI Threshold -90 to -50 (current: ");
-    Serial.print(BT_RSSI_THRESHOLD);
-    Serial.print(") [ENTER uses current/default value]: ");
-    String input = readSerialLine();
-    if (input.length() == 0) break;
-    int value;
-    if (validateRSSI(input.c_str(), value)) {
-      BT_RSSI_THRESHOLD = value;
-      break;
-    }
-    Serial.println("Invalid RSSI value. Must be between -90 and -50.");
-  }
-  
-  // Dwell Time
-  while (true) {
-    Serial.print("Enter Dwell Time in seconds, 60-86400 (current: ");
-    Serial.print(DWELL_TIME);
-    Serial.print(") [ENTER uses current/default value]: ");
-    String input = readSerialLine();
-    if (input.length() == 0) break;
-    int value;
-    if (validateDwellTime(input.c_str(), value)) {
-      DWELL_TIME = value;
-      break;
-    }
-    Serial.println("Invalid dwell time. Must be between 60 and 86400 seconds.");
-  }
-  
-  // Save configuration
-  saveConfiguration();
-  
-  // Initialize Ethernet for NTP testing
-  Serial.println("\nInitializing network...");
-  getEthernetMAC("DeviceMAC", 0);
-  byte mac[] = {0x00, 0x08, 0xDC, MAC4[0], MAC5[0], MAC6[0]};
-  SPI.begin(ETH_SPI_SCK, ETH_SPI_MISO, ETH_SPI_MOSI, -1);
-  Ethernet.init(ETH_PHY_CS);
-  Ethernet.begin(mac, configIp, configDns, configGateway, configSubnet);
-  ethernetInitialized = true; // Mark as initialized
-  
-  // Verify Ethernet hardware
-  if (Ethernet.hardwareStatus() == EthernetNoHardware) {
-    Serial.println("ERROR: Ethernet PHY not found. Cannot test NTP.");
-    Serial.println("Configuration saved but network test skipped.");
-    delay(3000);
-    if (!needsConfiguration) {
-      // Reconfiguration - restart required
-      Serial.println("Restarting...");
-      delay(2000);
-      ESP.restart();
-    }
-    return; // First boot - will continue to normal operation
-  }
-  
-  // Wait for Ethernet link
-  Serial.print("Waiting for Ethernet link");
-  int linkAttempts = 0;
-  while(Ethernet.linkStatus() != LinkON && linkAttempts < 10) {
-    Serial.print(".");
-    delay(1000);
-    linkAttempts++;
-  }
-  Serial.println();
-  
-  if (Ethernet.linkStatus() != LinkON) {
-    Serial.println("WARNING: Ethernet link did not come up. Cannot test NTP.");
-    Serial.println("Configuration saved but network test skipped.");
-    delay(3000);
-    if (!needsConfiguration) {
-      // Reconfiguration - restart required
-      Serial.println("Restarting...");
-      delay(2000);
-      ESP.restart();
-    }
-    return; // First boot - will continue to normal operation
-  }
-  
-  Serial.println("Network initialized successfully.");
-  
-  // Test NTP
-  Serial.println("Testing NTP synchronization...");
-  ntp.begin(configNtpServer);
-  delay(2000);
-  ntp.update();
-  delay(2000);
-  unsigned long testTime = ntp.epoch();
-  
-  if (testTime > 1735689600) { // Jan 1, 2025
-    Serial.print("NTP sync successful! Current time: ");
-    Serial.println(ntp.formattedTime("%b %d %T "));
-  } else {
-    Serial.println("NTP sync FAILED! Please check your NTP server settings.");
-  }
-  
-  Serial.println("\n========================================");
-  
-  if (needsConfiguration) {
-    // First-time configuration - continue to normal operation
-    Serial.println("Configuration complete!");
-    Serial.println("Continuing to normal operation...");
-    Serial.println("========================================\n");
-    delay(2000);
-  } else {
-    // Reconfiguration - restart required
-    Serial.println("Configuration complete! Restarting...");
-    Serial.println("========================================\n");
-    delay(3000);
-    ESP.restart();
-  }
-}
-
 void getEthernetMAC(char* configDirective, int reinitialize){
   SavedConfig.begin(configDirective, false);
   if (reinitialize){
@@ -832,8 +179,7 @@ void setup() {
   Serial.println("\n\nESP32-Watchman Starting...");
   
   // Initialize the RGB LED early for status indication
-  FastLED.addLeds<WS2812, LED_DATA_PIN, GRB>(rgbled, 1);
-  FastLED.setBrightness(50);
+  rgbled.begin(LED_DATA_PIN);
   
   // Load saved configuration
   loadConfiguration();
@@ -892,8 +238,7 @@ void setup() {
   if (Ethernet.hardwareStatus() == EthernetNoHardware) {
     Serial.println("Ethernet PHY not found.");
     while (true) {
-      rgbled[0] = CRGB::Red; // Awaiting Ethernet PHY, set status LED to red
-      FastLED.show();
+      rgbled.set("red", 50); // Awaiting Ethernet PHY, set status LED to red
       delay(1000); // Wait for AtomPoE to be connected
     }
   }
@@ -903,14 +248,12 @@ void setup() {
   {
     Serial.print("Waiting for Ethernet link.");
     Serial.println();
-    rgbled[0] = CRGB::Yellow; // Awaiting link up, set status LED to yellow
-    FastLED.show();
+    rgbled.set("yellow", 50); // Awaiting link up, set status LED to yellow
     delay(1000);
   }
 
   // Ethernet online, set status LED to green
-  rgbled[0] = CRGB::Green;
-  FastLED.show();
+  rgbled.set("green", 50);
 
   // Setup NTP time synchronization
   ntp.begin(configNtpServer); // Start the NTP client
@@ -926,6 +269,18 @@ void setup() {
   Serial.printf("NTP: %s\n", configNtpServer);
   Serial.printf("RSSI Threshold: %d\n", BT_RSSI_THRESHOLD);
   Serial.printf("Dwell Time: %d seconds\n", DWELL_TIME);
+#if ACTIVE_BT_SCANS
+  Serial.println("Active BT Scan: Enabled");
+#else
+  Serial.println("Active BT Scan: Disabled");
+#endif
+/*
+#if IMDB_ENABLE_PERSISTENCE
+  Serial.println("Persistence: Enabled");
+#else
+  Serial.println("Persistence: Disabled");
+#endif
+*/
   Serial.println("=============================\n");
 
   // Initialize ESP32IMDB In-Memory Database
@@ -946,7 +301,11 @@ void setup() {
   // Initialize Bluetooth
 	BLEDevice::init("");
 	pBLEScan = BLEDevice::getScan();
+#if ACTIVE_BT_SCANS
 	pBLEScan->setActiveScan(true);
+#else
+	pBLEScan->setActiveScan(false);
+#endif
 
   // Initialize UDP for syslog
   syslogUdp.begin(514);
@@ -958,7 +317,8 @@ void setup() {
   Serial.println("Checking for DLIGHT ambient light sensor...");
   dlightAvailable = detectDLightModule();
   if (dlightAvailable) {
-    Serial.println("DLIGHT module detected and initialized.");
+    Serial.printf("DLIGHT module detected and initialized. Light alerts will begin after %d second initialization period.\n", LIGHT_INIT_WAIT / 1000);
+    Serial.println();
     lastLightSampleTime = millis(); // Initialize sample timer
   } else {
     Serial.println("DLIGHT module not detected. Checking for ultrasonic sensor...");
@@ -967,6 +327,7 @@ void setup() {
     ultrasonicAvailable = detectUltrasonicModule();
     if (ultrasonicAvailable) {
       Serial.printf("Ultrasonic sensor detected and initialized. Motion alerts will begin after %d second initialization period.\n", MOTION_INIT_WAIT / 1000);
+      Serial.println();
       lastMotionSampleTime = millis(); // Initialize sample timer
     } else {
       Serial.println("Ultrasonic sensor not detected. Motion monitoring disabled.");
@@ -975,37 +336,46 @@ void setup() {
 }
 
 void loop() {
-  // Update NTP
-  ntp.update();
+  unsigned long currentTime = millis();
+  
+  // Update NTP once per day (86400 seconds = 24 hours)
+  if (currentTime - lastNTPUpdate >= 86400000 || lastNTPUpdate == 0) {
+    ntp.update();
+    lastNTPUpdate = currentTime;
+  }
+  
   scanTime = ntp.epoch();
 
   // If the NTP time does not look right, keep trying
   while(scanTime < 1767225600){ // DTS is at least Jan 1, 2026
     Serial.println("NTP time sync failed, retrying...");
-    rgbled[0] = CRGB::Purple; // Awaiting successful NTP, set status LED to purple
-    FastLED.show();
+    rgbled.set("purple", 50); // Awaiting successful NTP, set status LED to purple
     delay(1000);
     ntp.update(); // Re-attempt NTP sync
     scanTime = ntp.epoch();
+    lastNTPUpdate = millis(); // Update the timer after successful sync
   }
 
-  scanSquelch = scanTime - DWELL_TIME;
+  // Check if 60 seconds have passed since last BLE scan
+  if (currentTime - lastBLEScanTime >= 60000) {
+    scanSquelch = scanTime - DWELL_TIME;
 
-  rgbled[0] = CRGB::Blue; // Starting Bluetooth scan, set status LED to blue
-  FastLED.show();
-	BLEScanResults* scanResults = pBLEScan->start(5);
-  Serial.printf("%d nearby Bluetooth devices.\n", scanResults->getCount());
-  rgbled[0] = CRGB::Black; // Finished Bluetooth scan, disable status LED
-  FastLED.show();
-  
-  for(int i = 0; i < scanResults->getCount(); i++) {
-    BLEAdvertisedDevice currentBLE = scanResults->getDevice(i);
-    if (currentBLE.getRSSI() > BT_RSSI_THRESHOLD) {
-      Serial.println(currentBLE.toString());
-      processBluetoothDevice(currentBLE, scanTime, scanSquelch);
+    rgbled.set("blue", 50); // Starting Bluetooth scan, set status LED to blue
+    BLEScanResults* scanResults = pBLEScan->start(5);
+    Serial.printf("%d nearby Bluetooth devices.\n", scanResults->getCount());
+    rgbled.set("black", 50); // Finished Bluetooth scan, disable status LED
+    
+    for(int i = 0; i < scanResults->getCount(); i++) {
+      BLEAdvertisedDevice currentBLE = scanResults->getDevice(i);
+      if (currentBLE.getRSSI() > BT_RSSI_THRESHOLD) {
+        Serial.println(currentBLE.toString());
+        processBluetoothDevice(currentBLE, scanTime, scanSquelch);
+      }
     }
+    Serial.println();
+    
+    lastBLEScanTime = currentTime; // Update last scan time
   }
-  Serial.println();
   
   // Ambient light level monitoring routine
   checkLightLevel();
@@ -1013,6 +383,3 @@ void loop() {
   // Motion detection monitoring routine
   checkMotionLevel();
 }
-
-
-

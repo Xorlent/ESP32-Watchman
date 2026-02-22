@@ -1,7 +1,7 @@
 # ESP32-Watchman
 ## PoE-powered remote facility monitor that scans for and alerts on nearby Bluetooth devices and light level changes, or detected motion
 ## Background
-Remote, unmanned facilites can provide ample opportunity for tampering, physical theft, and network penetration attacks.  The M5Stack AtomPoE together with the ESP32 S3 SoC can be used as a physical perimeter sensing device, sending detection information to a configured Syslog server.  These Syslog messages can help provide visibility into activity that may indicate traditional physical security measures have been circumvented.  In conjunction with an [ESP32 Honeypot](https://github.com/Xorlent/The-26-Dollar-Honeypot), you can build full physical and cyber sensing capabilities for a total cost of under $70.
+Remote, unmanned facilites can provide ample opportunity for tampering, physical theft, and network penetration attacks.  The M5Stack AtomPoE together with the ESP32 S3 SoC can be used as a perimeter sensing device, sending detection information to a configured Syslog server.  These Syslog messages can help provide visibility into activity that may indicate traditional physical security measures have been circumvented.
 
 ## Requirements
 1. M5Stack [AtomPoE Base W5500](https://shop.m5stack.com/products/atomic-poe-base-w5500)
@@ -9,10 +9,12 @@ Remote, unmanned facilites can provide ample opportunity for tampering, physical
 3. Optionally, either:
    - A [Ultrasonic Distance I2C](https://shop.m5stack.com/products/ultrasonic-distance-unit-i2c-rcwl-9620)
    - A [DLight Unit](https://shop.m5stack.com/products/dlight-unit-ambient-light-sensor-bh1750fvi-tr)
-4. A Syslog collector (free open source options exist, as well as Graylog Open)
+
+## Device Capability Comparison
+This project generates Syslog notifications for all detected activity.
 
 ## Configuration
-All configuration is managed through a serial terminal interface. On first boot, the device automatically enters configuration mode. After initial setup, you can re-enter configuration mode at any time by pressing **'C'** within 5 seconds of device startup.
+All configuration is managed through a serial terminal interface. On first boot, the device automatically enters configuration mode. After initial setup, you can re-enter configuration mode at any time by pressing **'C'** in the serial console within 5 seconds of device startup.
 
 Configurable options:
 - Host name
@@ -26,13 +28,19 @@ Configurable options:
 
 Configuration changes are saved to non-volatile memory and persist across reboots.
 
+Advanced options:
+- Active Bluetooth Scan
+_Active Bluetooth scans will attempt to connect and get service information for all newly discovered devices for higher fidelity results_
+  - Edit Config.h and change #define ACTIVE_BT_SCANS 0 to #define ACTIVE_BT_SCANS 1
+
 ## LED Status Indicators
 The device uses an RGB LED to indicate its current status:
 - **Red** - Missing Ethernet PHY (Is the AtomPoE sled connected?)
 - **Yellow** - Waiting for Ethernet link to come up
 - **Green** - Connected
 - **Purple** - NTP sync failure
-- **Blue** - Active Bluetooth poll
+- **Blue** - Bluetooth poll in process
+- **Flashing Blue** - Active Bluetooth probe
 
 ## Programming
 _Once you've successfully programmed a single unit, skip step 1.  Repeating this process takes 5 minutes from start to finish._
@@ -82,3 +90,6 @@ _Once you've successfully programmed a single unit, skip step 1.  Repeating this
   - 10/100 Mbit twisted pair copper
   - IEEE 802.3af Power-over-Ethernet
 
+## Special Thanks
+- @https://github.com/dannymcc/bluehood - Many thanks for turning me onto "Self-administered" bit checking and Bluetooth service probing, greatly enhancing the capabilities of this project!
+- https://github.com/NordicSemiconductor/bluetooth-numbers-database - Information that helped fill some gaps in Bluetooth service and manufacturer data
