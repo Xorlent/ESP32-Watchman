@@ -1,1 +1,1 @@
-## 3D-printable STEP files for mounting your ESP32-Watchman
+## 3D-printable STL files for mounting your ESP32-Watchman (scale to mm if prompted)
