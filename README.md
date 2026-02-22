@@ -91,5 +91,6 @@ _Once you've successfully programmed a single unit, skip step 1.  Repeating this
   - IEEE 802.3af Power-over-Ethernet
 
 ## Special Thanks
-- @https://github.com/dannymcc/bluehood - Many thanks for turning me onto "Self-administered" bit checking and Bluetooth service probing, greatly enhancing the capabilities of this project!
+- https://github.com/dannymcc/bluehood - Many thanks for turning me onto "Self-administered" bit checking and Bluetooth service probing, greatly enhancing the capabilities of this project!
+
 - https://github.com/NordicSemiconductor/bluetooth-numbers-database - Information that helped fill some gaps in Bluetooth service and manufacturer data
